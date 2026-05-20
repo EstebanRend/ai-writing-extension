@@ -10,7 +10,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const maxChars = Number(process.env.MAX_SELECTION_CHARS || 4000);
 const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-const maxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS || 100);
+const defaultMaxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS || 140);
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -44,6 +44,8 @@ app.post("/api/improve", async (req, res) => {
     const selectedText = String(req.body?.selectedText || "").trim();
     const actionId = String(req.body?.actionId || DEFAULT_ACTION_ID).trim() || DEFAULT_ACTION_ID;
     const action = resolveAction(actionId);
+    const effectiveMaxOutputTokens =
+      typeof action.maxOutputTokens === "number" ? action.maxOutputTokens : defaultMaxOutputTokens;
 
     console.log(
       `[improve:start] requestId=${requestId} ip=${req.ip} selectedChars=${selectedText.length} actionId=${action.id}`
@@ -69,13 +71,13 @@ app.post("/api/improve", async (req, res) => {
     const response = await client.responses.create({
       model,
       input: finalPrompt,
-      max_output_tokens: maxOutputTokens
+      max_output_tokens: effectiveMaxOutputTokens
     });
     const openAiElapsedMs = Date.now() - openAiStartedAt;
 
     const elapsedMs = Date.now() - startedAt;
     console.log(
-      `[improve:success] requestId=${requestId} actionId=${action.id} model=${model} maxOutputTokens=${maxOutputTokens} resultChars=${(response.output_text || "").length} openAiElapsedMs=${openAiElapsedMs} elapsedMs=${elapsedMs}`
+      `[improve:success] requestId=${requestId} actionId=${action.id} model=${model} maxOutputTokens=${effectiveMaxOutputTokens} resultChars=${(response.output_text || "").length} openAiElapsedMs=${openAiElapsedMs} elapsedMs=${elapsedMs}`
     );
 
     return res.json({
