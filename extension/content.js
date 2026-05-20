@@ -2,8 +2,6 @@ const ROOT_ID = "ai-writing-assistant-root";
 const BUTTON_ID = "ai-writing-assistant-improve";
 const ACTION_ID = "improve-writing";
 const DEFAULT_BACKEND_URL = "http://localhost:3000";
-const DEFAULT_TEMPLATE =
-  "You are a writing assistant for software engineers communicating in Slack.\n\nRewrite the text to be clear, concise, and professional while preserving exact meaning.\nRules:\n- Keep technical details accurate (ticket IDs, links, versions, error text, commands, code blocks, @mentions, names, dates, timezones).\n- Do not invent facts.\n- Keep it short and actionable.\n- If the text is a request, make the ask explicit.\n- If the text looks like a status update, format as:\n  - Done:\n  - Doing:\n  - Blocked:\nReturn only the rewritten text.\n\nText:\n{{selection}}";
 
 let tooltipEl = null;
 let selectedState = null;
@@ -39,12 +37,11 @@ function isContextInvalidatedError(error) {
   return message.toLowerCase().includes("extension context invalidated");
 }
 
-async function requestImproveDirectly(text) {
-  const prompt = DEFAULT_TEMPLATE.replace("{{selection}}", text);
+async function requestImproveDirectly(text, actionId) {
   const response = await fetch(`${DEFAULT_BACKEND_URL}/api/improve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ selectedText: text, prompt })
+    body: JSON.stringify({ selectedText: text, actionId })
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -196,10 +193,10 @@ async function runImprove() {
         if (!isContextInvalidatedError(error)) {
           throw error;
         }
-        result = await requestImproveDirectly(selectedState.text);
+        result = await requestImproveDirectly(selectedState.text, ACTION_ID);
       }
     } else {
-      result = await requestImproveDirectly(selectedState.text);
+      result = await requestImproveDirectly(selectedState.text, ACTION_ID);
     }
 
     if (result) {

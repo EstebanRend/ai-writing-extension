@@ -2,6 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import OpenAI from "openai";
+import { ACTIONS, DEFAULT_ACTION_ID, resolveAction } from "./config/actions.js";
 
 dotenv.config();
 
@@ -26,17 +27,26 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "ai-writing-backend" });
 });
 
+app.get("/api/actions", (_req, res) => {
+  return res.json({
+    defaultActionId: DEFAULT_ACTION_ID,
+    actions: ACTIONS.map((action) => ({
+      id: action.id,
+      label: action.label
+    }))
+  });
+});
+
 app.post("/api/improve", async (req, res) => {
   const requestId = createRequestId();
   const startedAt = Date.now();
   try {
     const selectedText = String(req.body?.selectedText || "").trim();
-    const promptTemplate = String(req.body?.prompt || "").trim();
+    const actionId = String(req.body?.actionId || DEFAULT_ACTION_ID).trim() || DEFAULT_ACTION_ID;
+    const action = resolveAction(actionId);
 
     console.log(
-      `[improve:start] requestId=${requestId} ip=${req.ip} selectedChars=${selectedText.length} hasPromptTemplate=${Boolean(
-        promptTemplate
-      )}`
+      `[improve:start] requestId=${requestId} ip=${req.ip} selectedChars=${selectedText.length} actionId=${action.id}`
     );
 
     if (!selectedText) {
@@ -53,10 +63,7 @@ app.post("/api/improve", async (req, res) => {
       });
     }
 
-    const prompt =
-      promptTemplate ||
-      "You are a writing assistant for software engineers communicating in Slack.\n\nRewrite the text to be clear, concise, and professional while preserving exact meaning.\nRules:\n- Keep technical details accurate (ticket IDs, links, versions, error text, commands, code blocks, @mentions, names, dates, timezones).\n- Do not invent facts.\n- Keep it short and actionable.\n- If the text is a request, make the ask explicit.\n- If the text looks like a status update, format as:\n  - Done:\n  - Doing:\n  - Blocked:\nReturn only the rewritten text.\n\nText:\n{{selection}}";
-    const finalPrompt = prompt.replace("{{selection}}", selectedText);
+    const finalPrompt = action.template.replace("{{selection}}", selectedText);
 
     const openAiStartedAt = Date.now();
     const response = await client.responses.create({
@@ -68,7 +75,7 @@ app.post("/api/improve", async (req, res) => {
 
     const elapsedMs = Date.now() - startedAt;
     console.log(
-      `[improve:success] requestId=${requestId} model=${model} maxOutputTokens=${maxOutputTokens} resultChars=${(response.output_text || "").length} openAiElapsedMs=${openAiElapsedMs} elapsedMs=${elapsedMs}`
+      `[improve:success] requestId=${requestId} actionId=${action.id} model=${model} maxOutputTokens=${maxOutputTokens} resultChars=${(response.output_text || "").length} openAiElapsedMs=${openAiElapsedMs} elapsedMs=${elapsedMs}`
     );
 
     return res.json({
