@@ -1,2 +1,11 @@
-node_modules
+node_modules/
+**node_modules/
 .env
+**/.env
+.DS_Store
+Thumbs.db
+*.log
+dist/
+build/
+.idea/
+.vscode/
