@@ -4,8 +4,7 @@ const DEFAULT_ACTIONS = [
   {
     id: "improve-writing",
     label: "Improve writing",
-    template:
-      "You are a professional writing assistant. Improve clarity, grammar, and flow while preserving meaning.\n\nText:\n{{selection}}"
+    template: "Rewrite for clarity and grammar. Return only rewritten text.\n\nText:\n{{selection}}"
   }
 ];
 

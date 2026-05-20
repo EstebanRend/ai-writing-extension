@@ -9,6 +9,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const maxChars = Number(process.env.MAX_SELECTION_CHARS || 4000);
 const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+const maxOutputTokens = Number(process.env.MAX_OUTPUT_TOKENS || 100);
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -54,17 +55,20 @@ app.post("/api/improve", async (req, res) => {
 
     const prompt =
       promptTemplate ||
-      "You are a professional writing assistant. Improve clarity, grammar, and flow while preserving the original meaning.\n\nText:\n{{selection}}";
+      "Rewrite for clarity and grammar. Return only rewritten text.\n\nText:\n{{selection}}";
     const finalPrompt = prompt.replace("{{selection}}", selectedText);
 
+    const openAiStartedAt = Date.now();
     const response = await client.responses.create({
       model,
-      input: finalPrompt
+      input: finalPrompt,
+      max_output_tokens: maxOutputTokens
     });
+    const openAiElapsedMs = Date.now() - openAiStartedAt;
 
     const elapsedMs = Date.now() - startedAt;
     console.log(
-      `[improve:success] requestId=${requestId} model=${model} resultChars=${(response.output_text || "").length} elapsedMs=${elapsedMs}`
+      `[improve:success] requestId=${requestId} model=${model} maxOutputTokens=${maxOutputTokens} resultChars=${(response.output_text || "").length} openAiElapsedMs=${openAiElapsedMs} elapsedMs=${elapsedMs}`
     );
 
     return res.json({

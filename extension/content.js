@@ -3,7 +3,7 @@ const BUTTON_ID = "ai-writing-assistant-improve";
 const ACTION_ID = "improve-writing";
 const DEFAULT_BACKEND_URL = "http://localhost:3000";
 const DEFAULT_TEMPLATE =
-  "You are a professional writing assistant. Improve clarity, grammar, and flow while preserving meaning.\n\nText:\n{{selection}}";
+  "Rewrite for clarity and grammar. Return only rewritten text.\n\nText:\n{{selection}}";
 
 let tooltipEl = null;
 let selectedState = null;
