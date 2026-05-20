@@ -1,13 +1,12 @@
 const ROOT_ID = "ai-writing-assistant-root";
 const BUTTON_ID = "ai-writing-assistant-improve";
-const RESULT_ID = "ai-writing-assistant-result";
-const ERROR_ID = "ai-writing-assistant-error";
-const COPY_ID = "ai-writing-assistant-copy";
-const CLOSE_ID = "ai-writing-assistant-close";
 const ACTION_ID = "improve-writing";
+const DEFAULT_BACKEND_URL = "http://localhost:3000";
+const DEFAULT_TEMPLATE =
+  "You are a professional writing assistant. Improve clarity, grammar, and flow while preserving meaning.\n\nText:\n{{selection}}";
 
-let selectedText = "";
 let tooltipEl = null;
+let selectedState = null;
 
 function getExtensionRuntime() {
   if (typeof chrome !== "undefined" && chrome?.runtime?.sendMessage) {
@@ -19,26 +18,43 @@ function getExtensionRuntime() {
   return null;
 }
 
-function getWindowSelectedText() {
-  const selection = window.getSelection();
-  return selection ? selection.toString().trim() : "";
+function sendRuntimeMessage(runtime, payload) {
+  return new Promise((resolve, reject) => {
+    try {
+      runtime.sendMessage(payload, (response) => {
+        if (runtime.lastError) {
+          reject(new Error(runtime.lastError.message));
+          return;
+        }
+        resolve(response);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
-function getWindowSelectionRect() {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
-    return null;
-  }
-
-  const range = selection.getRangeAt(0).cloneRange();
-  const rect = range.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) {
-    return null;
-  }
-  return rect;
+function isContextInvalidatedError(error) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return message.toLowerCase().includes("extension context invalidated");
 }
 
-function getInputSelection() {
+async function requestImproveDirectly(text) {
+  const prompt = DEFAULT_TEMPLATE.replace("{{selection}}", text);
+  const response = await fetch(`${DEFAULT_BACKEND_URL}/api/improve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selectedText: text, prompt })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error ?? `Backend request failed (${response.status})`);
+  }
+  return payload?.result || "";
+}
+
+function getInputSelectionDetails() {
   const activeEl = document.activeElement;
   const isTextArea = activeEl instanceof HTMLTextAreaElement;
   const isTextInput =
@@ -60,27 +76,47 @@ function getInputSelection() {
     return null;
   }
 
-  const rect = activeEl.getBoundingClientRect();
-  return { text, rect };
+  return {
+    text,
+    rect: activeEl.getBoundingClientRect(),
+    mode: "input",
+    element: activeEl,
+    start,
+    end
+  };
 }
 
-function getSelectionDetails() {
-  const inputSelection = getInputSelection();
-  if (inputSelection) {
-    return inputSelection;
+function getRangeSelectionDetails() {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) {
+    return null;
   }
 
-  const text = getWindowSelectedText();
+  const range = selection.getRangeAt(0);
+  if (range.collapsed) {
+    return null;
+  }
+
+  const text = selection.toString().trim();
   if (!text) {
     return null;
   }
 
-  const rect = getWindowSelectionRect();
-  if (!rect) {
+  const rect = range.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
     return null;
   }
 
-  return { text, rect };
+  return {
+    text,
+    rect,
+    mode: "range",
+    range: range.cloneRange()
+  };
+}
+
+function getSelectionDetails() {
+  return getInputSelectionDetails() || getRangeSelectionDetails();
 }
 
 function removeTooltip() {
@@ -94,52 +130,86 @@ function setLoading(loading) {
   if (!tooltipEl) {
     return;
   }
-
-  const btn = tooltipEl.querySelector(`#${BUTTON_ID}`);
-  if (btn) {
-    btn.disabled = loading;
-    btn.textContent = loading ? "Improving..." : "Improve writing";
+  const button = tooltipEl.querySelector(`#${BUTTON_ID}`);
+  if (!button) {
+    return;
   }
+  button.disabled = loading;
+  button.textContent = loading ? "Improving..." : "Improve writing";
 }
 
-function renderResult(text) {
-  if (!tooltipEl) {
-    return;
+function replaceSelectionWithText(newText) {
+  if (!selectedState) {
+    return false;
   }
-  const result = tooltipEl.querySelector(`#${RESULT_ID}`);
-  const error = tooltipEl.querySelector(`#${ERROR_ID}`);
-  if (error) {
-    error.textContent = "";
+
+  if (selectedState.mode === "input") {
+    const { element, start, end } = selectedState;
+    if (!element || !element.isConnected) {
+      return false;
+    }
+    element.focus();
+    element.setSelectionRange(start, end);
+    element.setRangeText(newText, start, end, "end");
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
   }
-  if (result) {
-    result.textContent = text;
+
+  const range = selectedState.range;
+  if (!range) {
+    return false;
   }
+
+  const targetRange = range.cloneRange();
+  if (!targetRange.commonAncestorContainer?.isConnected) {
+    return false;
+  }
+
+  targetRange.deleteContents();
+  targetRange.insertNode(document.createTextNode(newText));
+  return true;
 }
 
-function renderError(message) {
-  if (!tooltipEl) {
-    return;
-  }
-  const error = tooltipEl.querySelector(`#${ERROR_ID}`);
-  if (error) {
-    error.textContent = message;
-  }
-}
-
-async function copyResult() {
-  if (!tooltipEl) {
+async function runImprove() {
+  if (!selectedState?.text) {
     return;
   }
 
-  const result = tooltipEl.querySelector(`#${RESULT_ID}`);
-  if (!result || !result.textContent.trim()) {
-    return;
-  }
-
+  setLoading(true);
   try {
-    await navigator.clipboard.writeText(result.textContent.trim());
-  } catch {
-    renderError("Unable to copy. Please copy manually.");
+    const runtime = getExtensionRuntime();
+    let result = "";
+
+    if (runtime) {
+      try {
+        const response = await sendRuntimeMessage(runtime, {
+          type: "AI_IMPROVE",
+          selectedText: selectedState.text,
+          actionId: ACTION_ID
+        });
+        if (!response?.ok) {
+          throw new Error(response?.error ?? "AI request failed.");
+        }
+        result = response.result || "";
+      } catch (error) {
+        if (!isContextInvalidatedError(error)) {
+          throw error;
+        }
+        result = await requestImproveDirectly(selectedState.text);
+      }
+    } else {
+      result = await requestImproveDirectly(selectedState.text);
+    }
+
+    if (result) {
+      replaceSelectionWithText(result);
+    }
+    removeTooltip();
+  } catch (error) {
+    console.error("[AI Writing] Improve failed:", error);
+  } finally {
+    setLoading(false);
   }
 }
 
@@ -150,69 +220,22 @@ function createTooltip(rect) {
   root.id = ROOT_ID;
   root.style.top = `${window.scrollY + rect.bottom + 8}px`;
   root.style.left = `${window.scrollX + rect.left}px`;
-  root.innerHTML = `
-    <div class="aiw-header">
-      <button id="${BUTTON_ID}" class="aiw-primary">Improve writing</button>
-      <button id="${CLOSE_ID}" class="aiw-close" aria-label="Close">x</button>
-    </div>
-    <div id="${ERROR_ID}" class="aiw-error"></div>
-    <div id="${RESULT_ID}" class="aiw-result"></div>
-    <div class="aiw-actions">
-      <button id="${COPY_ID}" class="aiw-secondary">Copy</button>
-    </div>
-  `;
+  root.innerHTML = `<button id="${BUTTON_ID}" class="aiw-primary">Improve writing</button>`;
 
   document.body.appendChild(root);
   tooltipEl = root;
-
-  root.querySelector(`#${BUTTON_ID}`)?.addEventListener("click", async () => {
-    setLoading(true);
-    renderResult("");
-    renderError("");
-
-    const runtime = getExtensionRuntime();
-    if (!runtime) {
-      setLoading(false);
-      renderError("Extension runtime unavailable. Reload extension and refresh this page.");
-      console.error("[AI Writing] runtime.sendMessage is unavailable in this context.");
-      return;
-    }
-
-    runtime.sendMessage(
-      {
-        type: "AI_IMPROVE",
-        selectedText,
-        actionId: ACTION_ID
-      },
-      (response) => {
-        setLoading(false);
-        if (runtime.lastError) {
-          renderError("Could not reach extension background worker.");
-          console.error("[AI Writing] background error:", runtime.lastError.message);
-          return;
-        }
-        if (!response?.ok) {
-          renderError(response?.error ?? "AI request failed.");
-          return;
-        }
-        renderResult(response.result || "");
-      }
-    );
-  });
-
-  root.querySelector(`#${COPY_ID}`)?.addEventListener("click", copyResult);
-  root.querySelector(`#${CLOSE_ID}`)?.addEventListener("click", removeTooltip);
+  root.querySelector(`#${BUTTON_ID}`)?.addEventListener("click", runImprove);
 }
 
 function refreshTooltip() {
   const details = getSelectionDetails();
   if (!details) {
-    selectedText = "";
+    selectedState = null;
     removeTooltip();
     return;
   }
 
-  selectedText = details.text;
+  selectedState = details;
   createTooltip(details.rect);
 }
 
@@ -222,6 +245,7 @@ document.addEventListener("mouseup", () => {
 
 document.addEventListener("keyup", (event) => {
   if (event.key === "Escape") {
+    selectedState = null;
     removeTooltip();
     return;
   }
@@ -232,15 +256,10 @@ document.addEventListener("mousedown", (event) => {
   if (!tooltipEl) {
     return;
   }
-  const target = event.target;
-  if (target instanceof Node && tooltipEl.contains(target)) {
+  if (event.target instanceof Node && tooltipEl.contains(event.target)) {
     return;
   }
   removeTooltip();
 });
 
-window.addEventListener("scroll", () => {
-  if (tooltipEl) {
-    removeTooltip();
-  }
-});
+window.addEventListener("scroll", removeTooltip);
