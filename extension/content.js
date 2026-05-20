@@ -1,7 +1,5 @@
 const ROOT_ID = "ai-writing-assistant-root";
 const BUTTON_ID = "ai-writing-assistant-improve";
-const ACTION_ID = "improve-writing";
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
 
 let tooltipEl = null;
 let selectedState = null;
@@ -35,20 +33,6 @@ function sendRuntimeMessage(runtime, payload) {
 function isContextInvalidatedError(error) {
   const message = error instanceof Error ? error.message : String(error || "");
   return message.toLowerCase().includes("extension context invalidated");
-}
-
-async function requestImproveDirectly(text, actionId) {
-  const response = await fetch(`${DEFAULT_BACKEND_URL}/api/improve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ selectedText: text, actionId })
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.error ?? `Backend request failed (${response.status})`);
-  }
-  return payload?.result || "";
 }
 
 function getInputSelectionDetails() {
@@ -176,34 +160,28 @@ async function runImprove() {
   setLoading(true);
   try {
     const runtime = getExtensionRuntime();
-    let result = "";
-
-    if (runtime) {
-      try {
-        const response = await sendRuntimeMessage(runtime, {
-          type: "AI_IMPROVE",
-          selectedText: selectedState.text,
-          actionId: ACTION_ID
-        });
-        if (!response?.ok) {
-          throw new Error(response?.error ?? "AI request failed.");
-        }
-        result = response.result || "";
-      } catch (error) {
-        if (!isContextInvalidatedError(error)) {
-          throw error;
-        }
-        result = await requestImproveDirectly(selectedState.text, ACTION_ID);
-      }
-    } else {
-      result = await requestImproveDirectly(selectedState.text, ACTION_ID);
+    if (!runtime) {
+      throw new Error("Extension runtime unavailable. Reload extension and refresh the page.");
     }
 
+    const response = await sendRuntimeMessage(runtime, {
+      type: "AI_IMPROVE",
+      selectedText: selectedState.text
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error ?? "AI request failed.");
+    }
+
+    const result = response.result || "";
     if (result) {
       replaceSelectionWithText(result);
     }
     removeTooltip();
   } catch (error) {
+    if (isContextInvalidatedError(error)) {
+      console.error("[AI Writing] Extension context invalidated. Reload extension and refresh Slack tab.");
+      return;
+    }
     console.error("[AI Writing] Improve failed:", error);
   } finally {
     setLoading(false);

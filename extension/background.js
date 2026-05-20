@@ -1,22 +1,17 @@
 const DEFAULT_BACKEND_URL = "http://localhost:3000";
-const DEFAULT_ACTION_ID = "improve-writing";
 
 async function ensureDefaults() {
-  const existing = await chrome.storage.sync.get(["backendUrl", "defaultActionId"]);
+  const existing = await chrome.storage.sync.get(["backendUrl"]);
 
   if (!existing.backendUrl) {
     await chrome.storage.sync.set({ backendUrl: DEFAULT_BACKEND_URL });
-  }
-  if (!existing.defaultActionId) {
-    await chrome.storage.sync.set({ defaultActionId: DEFAULT_ACTION_ID });
   }
 }
 
 async function getSettings() {
   await ensureDefaults();
   const data = await chrome.storage.sync.get({
-    backendUrl: DEFAULT_BACKEND_URL,
-    defaultActionId: DEFAULT_ACTION_ID
+    backendUrl: DEFAULT_BACKEND_URL
   });
   return data;
 }
@@ -30,21 +25,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   (async () => {
+    let settings = { backendUrl: DEFAULT_BACKEND_URL };
     try {
       const { selectedText = "" } = message;
       if (!selectedText.trim()) {
         throw new Error("No selected text was provided.");
       }
 
-      const settings = await getSettings();
-      const actionId = message.actionId || settings.defaultActionId || DEFAULT_ACTION_ID;
+      settings = await getSettings();
+      const actionId = typeof message.actionId === "string" ? message.actionId : undefined;
 
       const response = await fetch(`${settings.backendUrl}/api/improve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedText,
-          actionId
+          ...(actionId ? { actionId } : {})
         })
       });
 
@@ -55,9 +51,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       sendResponse({ ok: true, result: payload.result });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const normalizedMessage =
+        message.toLowerCase().includes("failed to fetch")
+          ? `Cannot reach backend at ${settings.backendUrl || DEFAULT_BACKEND_URL}. Make sure server is running.`
+          : message;
       sendResponse({
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: normalizedMessage
       });
     }
   })();
