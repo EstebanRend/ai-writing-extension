@@ -9,6 +9,16 @@ const ACTION_ID = "improve-writing";
 let selectedText = "";
 let tooltipEl = null;
 
+function getExtensionRuntime() {
+  if (typeof chrome !== "undefined" && chrome?.runtime?.sendMessage) {
+    return chrome.runtime;
+  }
+  if (typeof browser !== "undefined" && browser?.runtime?.sendMessage) {
+    return browser.runtime;
+  }
+  return null;
+}
+
 function getWindowSelectedText() {
   const selection = window.getSelection();
   return selection ? selection.toString().trim() : "";
@@ -160,7 +170,15 @@ function createTooltip(rect) {
     renderResult("");
     renderError("");
 
-    chrome.runtime.sendMessage(
+    const runtime = getExtensionRuntime();
+    if (!runtime) {
+      setLoading(false);
+      renderError("Extension runtime unavailable. Reload extension and refresh this page.");
+      console.error("[AI Writing] runtime.sendMessage is unavailable in this context.");
+      return;
+    }
+
+    runtime.sendMessage(
       {
         type: "AI_IMPROVE",
         selectedText,
@@ -168,8 +186,9 @@ function createTooltip(rect) {
       },
       (response) => {
         setLoading(false);
-        if (chrome.runtime.lastError) {
+        if (runtime.lastError) {
           renderError("Could not reach extension background worker.");
+          console.error("[AI Writing] background error:", runtime.lastError.message);
           return;
         }
         if (!response?.ok) {
