@@ -18,6 +18,7 @@ const AIW_CONFIG = Object.freeze({
   }),
   fallbackActions: Object.freeze([
     { id: "improve-writing", label: "Improve writing" },
+    { id: "simplify-english", label: "Simplify English" },
     { id: "daily-report", label: "Daily report" },
     { id: "ask-help", label: "Ask help" },
     { id: "request-review", label: "Request review" },

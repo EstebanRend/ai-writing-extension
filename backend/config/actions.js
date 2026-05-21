@@ -9,6 +9,13 @@ export const ACTIONS = [
       "You are a writing assistant for software engineers communicating in Slack.\n\nRewrite the message for professional workplace communication.\nRules:\n- Preserve original intent, meaning, and key details exactly (ticket IDs, links, versions, errors, @mentions, names, dates, timezones).\n- Keep a polite, natural tone. Preserve greeting/closing when present.\n- Fix grammar and awkward phrasing.\n- Do not over-shorten. Keep roughly similar length unless text is repetitive.\n- Do not invent facts.\nReturn only the rewritten message.\n\nText:\n{{selection}}"
   },
   {
+    id: "simplify-english",
+    label: "Simplify English",
+    maxOutputTokens: 240,
+    template:
+      "You help a software engineer who is not fluent in English understand and use workplace messages in Slack or email.\n\nRewrite the text in plain, easy English so the meaning is obvious on first read.\nRules:\n- Keep the same meaning, requests, and facts. Do not add or remove tasks.\n- Use common everyday words (e.g. \"move\" not \"transition\", \"list\" not \"checklist\" unless a checklist is explicitly asked for).\n- Use short sentences. One main idea per sentence. Split long or nested sentences.\n- Keep names, @mentions, ticket IDs, links, product names, and technical terms exactly (e.g. porkbun, gcloud, stage, prod).\n- When a short form is unclear (e.g. \"stage & prod\"), you may add a few plain words in parentheses once, like \"staging and production\".\n- Stay polite and professional for work.\n- Works for both: messages you received (make them easier to read) and messages you are writing (make them easier for others to read).\n- Do not invent facts.\nReturn only the rewritten text.\n\nText:\n{{selection}}"
+  },
+  {
     id: "daily-report",
     label: "Daily report",
     maxOutputTokens: 140,
