@@ -125,6 +125,9 @@ function buildMenuNodesHtml(nodes) {
 function buildTooltipHtml(mainLabel) {
   const { mainButton, menuButton, menu } = AIW_CONFIG.dom;
   return `
+    <ul id="${menu}" class="aiw-menu" role="menu" hidden>
+      ${buildMenuNodesHtml(aiwGetActionTree())}
+    </ul>
     <div class="aiw-split">
       <button type="button" id="${mainButton}" class="aiw-split-main">
         ${AIW_CONFIG.icons.wand}
@@ -135,9 +138,6 @@ function buildTooltipHtml(mainLabel) {
         ${AIW_CONFIG.icons.chevron}
       </button>
     </div>
-    <ul id="${menu}" class="aiw-menu" role="menu" hidden>
-      ${buildMenuNodesHtml(aiwGetActionTree())}
-    </ul>
   `;
 }
 

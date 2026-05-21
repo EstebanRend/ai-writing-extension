@@ -4,11 +4,7 @@
 
   z-index: 2147483647;
 
-  display: inline-flex;
-
-  flex-direction: column-reverse;
-
-  align-items: flex-end;
+  display: inline-block;
 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 
@@ -158,9 +154,15 @@
 
 #ai-writing-assistant-root .aiw-menu {
 
+  position: absolute;
+
+  left: 0;
+
+  bottom: 100%;
+
   min-width: 180px;
 
-  margin-bottom: 4px;
+  margin: 0 0 0 135px;
 
   background: #ffffff;
 
