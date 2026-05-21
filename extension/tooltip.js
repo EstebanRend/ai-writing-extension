@@ -1,6 +1,7 @@
 const tooltipState = {
   el: null,
-  menuOpen: false
+  menuOpen: false,
+  openSubmenuRow: null
 };
 
 function getTooltipElement() {
@@ -13,14 +14,29 @@ function queryTooltip(selector) {
 
 function removeTooltip() {
   tooltipState.menuOpen = false;
+  closeSubmenu();
   if (tooltipState.el) {
     tooltipState.el.remove();
     tooltipState.el = null;
   }
 }
 
+function closeSubmenu() {
+  if (tooltipState.openSubmenuRow) {
+    tooltipState.openSubmenuRow.classList.remove("aiw-menu-row--open");
+    const submenu = tooltipState.openSubmenuRow.querySelector(".aiw-submenu");
+    if (submenu) {
+      submenu.hidden = true;
+    }
+    tooltipState.openSubmenuRow = null;
+  }
+}
+
 function setMenuOpen(open) {
   tooltipState.menuOpen = open;
+  if (!open) {
+    closeSubmenu();
+  }
   if (!tooltipState.el) {
     return;
   }
@@ -74,18 +90,44 @@ function setLoading(loading) {
   button.removeAttribute("aria-label");
 }
 
-function buildMenuHtml(actions) {
-  return actions
-    .map(
-      (action) =>
-        `<li role="none"><button type="button" class="aiw-menu-item" role="menuitem" data-action-id="${action.id}">${action.label}</button></li>`
-    )
+function buildLeafItemHtml(leaf) {
+  return `<li role="none" class="aiw-menu-row">
+    <button type="button" class="aiw-menu-item" role="menuitem" data-action-id="${leaf.id}">${leaf.label}</button>
+  </li>`;
+}
+
+function buildSubmenuHtml(children) {
+  return children.map((node) => (aiwIsLeaf(node) ? buildLeafItemHtml(node) : "")).join("");
+}
+
+function buildMenuNodesHtml(nodes) {
+  return nodes
+    .map((node) => {
+      if (aiwIsLeaf(node)) {
+        return buildLeafItemHtml(node);
+      }
+      if (!Array.isArray(node.children) || node.children.length === 0) {
+        return "";
+      }
+      return `<li role="none" class="aiw-menu-row aiw-menu-row--parent" data-group-id="${node.id}">
+        <button type="button" class="aiw-menu-item aiw-menu-item--parent" role="menuitem" aria-haspopup="true" aria-expanded="false">
+          <span class="aiw-menu-item-label">${node.label}</span>
+          ${AIW_CONFIG.icons.chevronRight}
+        </button>
+        <ul class="aiw-submenu" role="menu" hidden>
+          ${buildSubmenuHtml(node.children)}
+        </ul>
+      </li>`;
+    })
     .join("");
 }
 
-function buildTooltipHtml(actions, mainLabel) {
+function buildTooltipHtml(mainLabel) {
   const { mainButton, menuButton, menu } = AIW_CONFIG.dom;
   return `
+    <ul id="${menu}" class="aiw-menu" role="menu" hidden>
+      ${buildMenuNodesHtml(aiwGetActionTree())}
+    </ul>
     <div class="aiw-split">
       <button type="button" id="${mainButton}" class="aiw-split-main">
         ${AIW_CONFIG.icons.wand}
@@ -96,10 +138,95 @@ function buildTooltipHtml(actions, mainLabel) {
         ${AIW_CONFIG.icons.chevron}
       </button>
     </div>
-    <ul id="${menu}" class="aiw-menu" role="menu" hidden>
-      ${buildMenuHtml(actions)}
-    </ul>
   `;
+}
+
+function positionSubmenu(row) {
+  const submenu = row.querySelector(".aiw-submenu");
+  if (!submenu) {
+    return;
+  }
+  submenu.classList.remove("aiw-submenu--flip");
+  const rect = submenu.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 8) {
+    submenu.classList.add("aiw-submenu--flip");
+  }
+}
+
+function openSubmenu(row) {
+  if (tooltipState.openSubmenuRow === row) {
+    return;
+  }
+  closeSubmenu();
+  const submenu = row.querySelector(".aiw-submenu");
+  const trigger = row.querySelector(".aiw-menu-item--parent");
+  if (!submenu || !trigger) {
+    return;
+  }
+  row.classList.add("aiw-menu-row--open");
+  submenu.hidden = false;
+  trigger.setAttribute("aria-expanded", "true");
+  tooltipState.openSubmenuRow = row;
+  positionSubmenu(row);
+}
+
+function handleMenuActionClick(actionId) {
+  if (!actionId) {
+    return;
+  }
+  setCurrentActionId(actionId);
+  renderMainButtonLabel();
+  setMenuOpen(false);
+  void runImprove(actionId);
+}
+
+function bindMenuEvents(menu) {
+  if (!menu) {
+    return;
+  }
+
+  menu.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const parentTrigger = target.closest(".aiw-menu-item--parent");
+    if (parentTrigger) {
+      event.stopPropagation();
+      const row = parentTrigger.closest(".aiw-menu-row--parent");
+      if (row instanceof HTMLElement) {
+        if (tooltipState.openSubmenuRow === row) {
+          closeSubmenu();
+        } else {
+          openSubmenu(row);
+        }
+      }
+      return;
+    }
+
+    const item = target.closest("[data-action-id]");
+    if (!(item instanceof HTMLElement)) {
+      return;
+    }
+    handleMenuActionClick(item.dataset.actionId);
+  });
+
+  for (const row of menu.querySelectorAll(".aiw-menu-row--parent")) {
+    row.addEventListener("mouseenter", () => {
+      if (row instanceof HTMLElement) {
+        openSubmenu(row);
+      }
+    });
+  }
+
+  menu.addEventListener("mouseleave", (event) => {
+    const related = event.relatedTarget;
+    if (related instanceof Node && menu.contains(related)) {
+      return;
+    }
+    closeSubmenu();
+  });
 }
 
 function positionTooltip(root, details) {
@@ -135,32 +262,14 @@ function bindTooltipEvents(root) {
     setMenuOpen(!tooltipState.menuOpen);
   });
 
-  menu?.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-    const item = target.closest("[data-action-id]");
-    if (!(item instanceof HTMLElement)) {
-      return;
-    }
-    const actionId = item.dataset.actionId;
-    if (!actionId) {
-      return;
-    }
-    setCurrentActionId(actionId);
-    renderMainButtonLabel();
-    setMenuOpen(false);
-    void runImprove(actionId);
-  });
+  bindMenuEvents(menu);
 }
 
-async function createTooltip(details) {
+function createTooltip(details) {
   removeTooltip();
+  loadActions();
 
-  const actions = await loadActions();
-  const resolvedAction =
-    actions.find((action) => action.id === getCurrentActionId()) ?? actions[0];
+  const resolvedAction = aiwResolveLeaf(getCurrentActionId());
   if (resolvedAction) {
     setCurrentActionId(resolvedAction.id);
   }
@@ -168,7 +277,7 @@ async function createTooltip(details) {
   const root = document.createElement("div");
   root.id = AIW_CONFIG.dom.root;
   positionTooltip(root, details);
-  root.innerHTML = buildTooltipHtml(actions, getActionLabel(getCurrentActionId()));
+  root.innerHTML = buildTooltipHtml(getActionLabel(getCurrentActionId()));
 
   document.body.appendChild(root);
   tooltipState.el = root;
@@ -198,7 +307,7 @@ function refreshTooltip() {
     return;
   }
 
-  void createTooltip(details);
+  createTooltip(details);
 }
 
 function shouldRefreshTooltipFromEvent(event) {
@@ -211,6 +320,10 @@ function shouldRefreshTooltipFromEvent(event) {
 function handleEscapeKey() {
   if (isImproveInFlight()) {
     stopImprove();
+    return true;
+  }
+  if (tooltipState.openSubmenuRow) {
+    closeSubmenu();
     return true;
   }
   if (isMenuOpen()) {
