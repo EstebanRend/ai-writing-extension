@@ -187,7 +187,9 @@ function refreshTooltip() {
   const unchanged =
     tooltipState.el &&
     previous?.text === details.text &&
-    previous?.mode === details.mode;
+    previous?.mode === details.mode &&
+    previous?.start === details.start &&
+    previous?.end === details.end;
 
   setSelectedState(details);
 

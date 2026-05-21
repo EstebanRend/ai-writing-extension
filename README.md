@@ -124,7 +124,7 @@ Content scripts load in order (see `manifest.json`). Each file has one responsib
 | New AI action (prompt) | `backend/config/actions.js` |
 | New message type | `config.js` + `background.js` (`MESSAGE_TYPE`, keep in sync) |
 | Tooltip UI / styles | `tooltip.js`, `styles.css` |
-| Selection behavior | `selection.js` |
+| Selection behavior | `selection.js` (inputs, textareas, and `contenteditable` divs via range selection) |
 | Cancel / API flow | `request.js`, `background.js` |
 | When tooltip shows/hides | `content.js`, `tooltip.js` (`refreshTooltip`) |
 

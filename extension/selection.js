@@ -31,6 +31,77 @@ function clearSelectedState() {
   selectedState = null;
 }
 
+function getEditableRoot(node) {
+  if (!node) {
+    return null;
+  }
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+  return element.closest("[contenteditable=''], [contenteditable='true']");
+}
+
+function getRangeBoundingRect(range) {
+  const rect = range.getBoundingClientRect();
+  if (rect.width > 0 || rect.height > 0) {
+    return rect;
+  }
+
+  const rects = range.getClientRects();
+  if (rects.length === 0) {
+    return rect;
+  }
+
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const clientRect of rects) {
+    left = Math.min(left, clientRect.left);
+    top = Math.min(top, clientRect.top);
+    right = Math.max(right, clientRect.right);
+    bottom = Math.max(bottom, clientRect.bottom);
+  }
+
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+}
+
+function isMeaningfulSelection(selection) {
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return false;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (range.collapsed) {
+    return false;
+  }
+
+  if (!selection.toString().trim()) {
+    return false;
+  }
+
+  if (
+    selection.anchorNode === selection.focusNode &&
+    selection.anchorOffset === selection.focusOffset
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function hasVisibleRangeHighlight(range) {
+  for (const clientRect of range.getClientRects()) {
+    if (clientRect.width > 0 || clientRect.height > 0) {
+      return true;
+    }
+  }
+
+  const bounding = range.getBoundingClientRect();
+  return bounding.width > 0 || bounding.height > 0;
+}
+
 function getInputSelectionDetails() {
   const activeEl = document.activeElement;
   const isTextArea = activeEl instanceof HTMLTextAreaElement;
@@ -64,24 +135,17 @@ function getInputSelectionDetails() {
 
 function getRangeSelectionDetails() {
   const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) {
+  if (!isMeaningfulSelection(selection)) {
     return null;
   }
 
   const range = selection.getRangeAt(0);
-  if (range.collapsed) {
+  if (!hasVisibleRangeHighlight(range)) {
     return null;
   }
 
   const text = selection.toString().trim();
-  if (!text) {
-    return null;
-  }
-
-  const rect = range.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) {
-    return null;
-  }
+  const rect = getRangeBoundingRect(range);
 
   return {
     text,
@@ -125,17 +189,17 @@ function getInputEndAnchorRect(element, end) {
 function getRangeEndAnchorRect(range) {
   const endRange = range.cloneRange();
   endRange.collapse(false);
-  const rect = endRange.getBoundingClientRect();
+  const endRect = getRangeBoundingRect(endRange);
   const rects = range.getClientRects();
 
-  if (rects.length > 0 && (rect.width === 0 || rect.height === 0)) {
+  if (rects.length > 0 && (endRect.width === 0 || endRect.height === 0)) {
     const last = rects[rects.length - 1];
     return { left: last.right, bottom: last.bottom };
   }
 
   return {
-    left: rect.width === 0 ? rect.left : rect.right,
-    bottom: rect.bottom
+    left: endRect.width === 0 ? endRect.left : endRect.right,
+    bottom: endRect.bottom
   };
 }
 
@@ -180,5 +244,11 @@ function replaceSelectionWithText(newText) {
 
   targetRange.deleteContents();
   targetRange.insertNode(document.createTextNode(newText));
+
+  const editable = getEditableRoot(targetRange.commonAncestorContainer);
+  if (editable) {
+    editable.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  }
+
   return true;
 }
