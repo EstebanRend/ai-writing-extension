@@ -1,6 +1,5 @@
 /** Keep in sync with `extension/config.js` → AIW_CONFIG.messageType */
 const MESSAGE_TYPE = Object.freeze({
-  GET_ACTIONS: "GET_ACTIONS",
   AI_IMPROVE: "AI_IMPROVE",
   AI_CANCEL: "AI_CANCEL"
 });
@@ -30,26 +29,6 @@ function normalizeFetchError(error, backendUrl) {
   return message;
 }
 
-async function fetchBackend(path, options = {}) {
-  const settings = await getSettings();
-  const response = await fetch(`${settings.backendUrl}${path}`, options);
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload?.error ?? "Request failed.");
-  }
-  return payload;
-}
-
-async function handleGetActions(sendResponse) {
-  try {
-    const payload = await fetchBackend("/api/actions");
-    sendResponse({ ok: true, ...payload });
-  } catch (error) {
-    const settings = await getSettings();
-    sendResponse({ ok: false, error: normalizeFetchError(error, settings.backendUrl) });
-  }
-}
-
 async function handleImprove(message, sendResponse) {
   activeImproveAbort?.abort();
   const abortController = new AbortController();
@@ -57,21 +36,22 @@ async function handleImprove(message, sendResponse) {
 
   let backendUrl = DEFAULT_BACKEND_URL;
   try {
-    const { selectedText = "" } = message;
-    if (!selectedText.trim()) {
-      throw new Error("No selected text was provided.");
+    const prompt = String(message.prompt || "").trim();
+    if (!prompt) {
+      throw new Error("No prompt was provided.");
     }
 
     const settings = await getSettings();
     backendUrl = settings.backendUrl;
-    const actionId = typeof message.actionId === "string" ? message.actionId : undefined;
+    const maxOutputTokens =
+      typeof message.maxOutputTokens === "number" ? message.maxOutputTokens : undefined;
 
     const response = await fetch(`${backendUrl}/api/improve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        selectedText,
-        ...(actionId ? { actionId } : {})
+        prompt,
+        ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {})
       }),
       signal: abortController.signal
     });
@@ -99,11 +79,6 @@ chrome.runtime.onInstalled.addListener(ensureDefaults);
 chrome.runtime.onStartup.addListener(ensureDefaults);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === MESSAGE_TYPE.GET_ACTIONS) {
-    void handleGetActions(sendResponse);
-    return true;
-  }
-
   if (message?.type === MESSAGE_TYPE.AI_CANCEL) {
     activeImproveAbort?.abort();
     activeImproveAbort = null;

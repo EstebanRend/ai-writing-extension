@@ -1,6 +1,6 @@
 const requestState = {
   actionsCache: null,
-  currentActionId: AIW_CONFIG.defaultActionId,
+  currentActionId: aiwGetDefaultActionId(),
   activeRequest: null
 };
 
@@ -16,40 +16,16 @@ function setCurrentActionId(actionId) {
   requestState.currentActionId = actionId;
 }
 
-async function loadActions() {
-  if (requestState.actionsCache) {
-    return requestState.actionsCache;
+function loadActions() {
+  if (!requestState.actionsCache) {
+    requestState.actionsCache = aiwGetMenuActions();
+    requestState.currentActionId = aiwGetDefaultActionId();
   }
-
-  const runtime = getExtensionRuntime();
-  if (!runtime) {
-    requestState.actionsCache = [...AIW_CONFIG.fallbackActions];
-    return requestState.actionsCache;
-  }
-
-  try {
-    const response = await sendRuntimeMessage(runtime, {
-      type: AIW_CONFIG.messageType.GET_ACTIONS
-    });
-    if (response?.ok && Array.isArray(response.actions) && response.actions.length > 0) {
-      requestState.actionsCache = response.actions;
-      if (typeof response.defaultActionId === "string") {
-        requestState.currentActionId = response.defaultActionId;
-      }
-      return requestState.actionsCache;
-    }
-  } catch (error) {
-    if (!isContextInvalidatedError(error)) {
-      console.warn("[AI Writing] Could not load actions from backend:", error);
-    }
-  }
-
-  requestState.actionsCache = [...AIW_CONFIG.fallbackActions];
   return requestState.actionsCache;
 }
 
 function getActionLabel(actionId) {
-  const actions = requestState.actionsCache || AIW_CONFIG.fallbackActions;
+  const actions = requestState.actionsCache || aiwGetMenuActions();
   const action = actions.find((item) => item.id === actionId);
   return action?.label ?? "Improve writing";
 }
@@ -73,9 +49,15 @@ async function runImprove(actionId = requestState.currentActionId) {
     return;
   }
 
+  const leaf = aiwResolveLeaf(actionId);
+  if (!leaf) {
+    console.error("[AI Writing] Unknown action:", actionId);
+    return;
+  }
+
   const request = { cancelled: false };
   requestState.activeRequest = request;
-  requestState.currentActionId = actionId;
+  requestState.currentActionId = leaf.id;
   setLoading(true);
 
   try {
@@ -86,8 +68,8 @@ async function runImprove(actionId = requestState.currentActionId) {
 
     const response = await sendRuntimeMessage(runtime, {
       type: AIW_CONFIG.messageType.AI_IMPROVE,
-      selectedText: selection.text,
-      actionId
+      prompt: aiwBuildPrompt(leaf, selection.text),
+      maxOutputTokens: leaf.maxOutputTokens
     });
 
     if (request.cancelled || response?.cancelled) {
