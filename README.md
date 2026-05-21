@@ -7,8 +7,13 @@ Designed for everyday software communication (Slack messages, status updates, he
 ## Project Structure
 
 - `extension/` - Chrome extension (Manifest V3)
-  - `content.js` - selection detection, floating button, replace selected text
-  - `background.js` - sends requests to backend
+  - `config.js` - shared IDs, message types, fallback actions
+  - `runtime.js` - extension messaging helpers
+  - `selection.js` - read/replace selected text, anchor positioning
+  - `request.js` - load actions, run/stop improve requests
+  - `tooltip.js` - floating UI (split button, menu, loading/stop)
+  - `content.js` - document event wiring (entry point)
+  - `background.js` - service worker, backend `fetch` + abort
   - `manifest.json` - extension permissions and script wiring
 - `backend/` - local API service
   - `server.js` - API endpoints and OpenAI call
@@ -109,4 +114,17 @@ Current actions:
 - Keep prompts and behavior defaults in backend config, not in content script.
 - Do not commit `.env` files.
 - If adding new action types, only backend changes are required unless UI needs multi-action selection.
+
+### Extension layout
+
+Content scripts load in order (see `manifest.json`). Each file has one responsibility; shared state lives in small `*State` objects (`requestState`, `tooltipState`, `selectedState`).
+
+| Change you want | Edit |
+|-----------------|------|
+| New AI action (prompt) | `backend/config/actions.js` |
+| New message type | `config.js` + `background.js` (`MESSAGE_TYPE`, keep in sync) |
+| Tooltip UI / styles | `tooltip.js`, `styles.css` |
+| Selection behavior | `selection.js` |
+| Cancel / API flow | `request.js`, `background.js` |
+| When tooltip shows/hides | `content.js`, `tooltip.js` (`refreshTooltip`) |
 

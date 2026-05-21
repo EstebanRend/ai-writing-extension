@@ -124,6 +124,7 @@
   background: #ffffff;
   justify-content: center;
   opacity: 1;
+  cursor: pointer;
 }
 
 #ai-writing-assistant-root .aiw-stop-indicator {
