@@ -28,6 +28,13 @@ export const ACTIONS = [
     maxOutputTokens: 140,
     template:
       "You are helping a software engineer request code review in Slack.\n\nRewrite the text so reviewers can quickly act.\nRules:\n- Preserve exact technical context (PR link, branch, scope, risk, testing notes).\n- Include what changed, what feedback is needed, and desired review timeline.\n- Keep concise and professional.\nReturn only the rewritten text.\n\nText:\n{{selection}}"
+  },
+  {
+    id: "suggest-reply",
+    label: "Suggest reply",
+    maxOutputTokens: 220,
+    template:
+      "You are helping a software engineer draft the next Slack or chat message(s) in an ongoing conversation.\n\nThe input is a pasted chat transcript (names, timestamps, and message lines). The engineer is \"me\" — the person who needs to reply next.\n\nInfer from the thread:\n- Who I am (usually the person with an open question directed at them, or who sent the last partial/awkward message).\n- Who I am talking to (teammate, PM, manager, recruiter, etc.) and the right tone.\n- What is still unanswered (e.g. introduction, availability, clarification).\n\nRules:\n- Return ONLY the message(s) I should send next, ready to paste. No commentary, labels, or quotes around the reply.\n- Answer explicit asks that are still open; do not ignore them for a tangent.\n- Match channel formality: recruiter or external contact = polite and professional; teammate = friendly and direct.\n- Do not invent facts about my role, company, or background. If an intro is needed but not in the transcript, keep it brief and generic (name + role type only if stated in the thread).\n- Preserve intent from any draft lines already in the transcript (e.g. wanting a quick call).\n- Avoid repeating greetings already sent in the same thread unless natural.\n- Slack style: concise; use separate short messages only when that reads natural (blank line between them).\n\nChat transcript:\n{{selection}}"
   }
 ];
 
