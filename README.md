@@ -70,29 +70,45 @@ Backend running on http://localhost:3000
 2. Click **Improve writing**
 3. Rewritten text replaces the current selection
 
-## Action Configuration (Single Source of Truth)
+## Add a new tooltip option
 
-All prompts are configured in:
+The dropdown is built automatically from the backend. You add the **prompt + API support** on the server; the **tooltip** picks it up on the next load.
 
-- `backend/config/actions.js`
+```text
+actions.js  →  /api/actions (menu labels)  →  tooltip dropdown
+            →  /api/improve (runs prompt)   →  replaces selected text
+```
 
-Each action supports:
+### 1) Backend (required)
 
-- `id`
-- `label`
-- `template` (must include `{{selection}}`)
-- `maxOutputTokens` (optional per-action override)
+File: **`backend/config/actions.js`**
 
-Default action is controlled by:
+Add one object to `ACTIONS`:
 
-- `DEFAULT_ACTION_ID` in `backend/config/actions.js`
+| Field | Purpose |
+|-------|---------|
+| `id` | Sent to the API when user picks this option (e.g. `meeting-notes`) |
+| `label` | Shown in the tooltip menu |
+| `template` | Prompt for OpenAI; must include `{{selection}}` |
+| `maxOutputTokens` | Optional output length cap |
 
-Current actions:
+Set **`DEFAULT_ACTION_ID`** if this should be the main wand button (not only in the menu).
 
-- `improve-writing`
-- `daily-report`
-- `ask-help`
-- `request-review`
+You do **not** need to change `server.js` — it already exposes actions and runs any `id` from `ACTIONS`.
+
+### 2) Extension / tooltip (usually nothing)
+
+| File | When to edit |
+|------|----------------|
+| `tooltip.js` | No change — menu is built from the API list |
+| `request.js` | No change — sends `actionId` + selected text |
+| `extension/config.js` | Optional — add `{ id, label }` to `fallbackActions` if you want the label visible when the backend is offline (no prompt there) |
+
+### 3) Apply changes
+
+1. Restart backend: `cd backend && npm start`
+2. Reload extension at `chrome://extensions`
+3. Refresh the browser tab, select text, open the **▲** menu — new option should appear
 
 ## Troubleshooting
 
@@ -111,20 +127,13 @@ Current actions:
 
 ## Development Notes
 
-- Keep prompts and behavior defaults in backend config, not in content script.
-- Do not commit `.env` files.
-- If adding new action types, only backend changes are required unless UI needs multi-action selection.
+- Do not commit `.env` files
 
-### Extension layout
-
-Content scripts load in order (see `manifest.json`). Each file has one responsibility; shared state lives in small `*State` objects (`requestState`, `tooltipState`, `selectedState`).
-
-| Change you want | Edit |
-|-----------------|------|
-| New AI action (prompt) | `backend/config/actions.js` |
-| New message type | `config.js` + `background.js` (`MESSAGE_TYPE`, keep in sync) |
-| Tooltip UI / styles | `tooltip.js`, `styles.css` |
-| Selection behavior | `selection.js` (inputs, textareas, and `contenteditable` divs via range selection) |
-| Cancel / API flow | `request.js`, `background.js` |
-| When tooltip shows/hides | `content.js`, `tooltip.js` (`refreshTooltip`) |
+| Goal | Where |
+|------|--------|
+| New tooltip option + AI behavior | `backend/config/actions.js` |
+| Default wand button | `DEFAULT_ACTION_ID` in `backend/config/actions.js` |
+| Offline menu label only | `fallbackActions` in `extension/config.js` |
+| Tooltip styling | `extension/styles.css` |
+| Editable vs read-only text | `extension/selection.js` |
 
