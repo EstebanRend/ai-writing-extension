@@ -13,7 +13,7 @@ export const ACTIONS = [
     label: "Daily report",
     maxOutputTokens: 140,
     template:
-      "You are helping a software engineer write a daily status update for Slack.\n\nRewrite the text into concise status format.\nRules:\n- Preserve facts exactly; do not invent work.\n- Keep technical details intact (ticket IDs, links, branch names, errors, blockers).\n- Output in this structure:\n  - Done:\n  - Doing:\n  - Blocked:\n- If a section is missing, keep it but write 'None'.\nReturn only the rewritten text.\n\nText:\n{{selection}}"
+      "You are helping a software engineer write a daily status update for Slack.\n\nConvert the input into a professional but natural daily status update for Slack.\nRules:\n- Preserve facts exactly; do not invent work but detailed enough to be useful.\n- Keep technical details intact (ticket IDs, links, branch names, errors, blockers).\n- Output in this structure:\n  - Yesterday / Completed\n  - Today / In Progress\n  - Blockers / Questions:\n- If a section is missing, keep it but write 'None'.\nReturn only the rewritten text into clear sentences.\n- Keep the tone friendly and professional.\n\nText:\n{{selection}}"
   },
   {
     id: "ask-help",
