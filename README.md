@@ -38,7 +38,7 @@ Create `backend/.env` (or copy from `.env.example`):
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4.1-mini
-PORT=3000
+PORT=3847
 MAX_SELECTION_CHARS=4000
 MAX_OUTPUT_TOKENS=140
 ```
@@ -53,7 +53,7 @@ npm start
 Expected log:
 
 ```txt
-Backend running on http://localhost:3000
+Backend running on http://localhost:3847
 ```
 
 ## 2) Load Extension (Unpacked)
@@ -112,7 +112,7 @@ You do **not** need to change `server.js` — it already exposes actions and run
 
 ## Troubleshooting
 
-- **"Cannot reach backend at http://localhost:3000"**
+- **"Cannot reach backend at http://localhost:3847"**
   - Ensure backend is running
   - Ensure `PORT` matches extension backend URL
 - **No button appears after selecting text**

@@ -5,13 +5,14 @@ const MESSAGE_TYPE = Object.freeze({
   AI_CANCEL: "AI_CANCEL"
 });
 
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
+const DEFAULT_BACKEND_URL = "http://localhost:3847";
+const LEGACY_BACKEND_URL = "http://localhost:3000";
 
 let activeImproveAbort = null;
 
 async function ensureDefaults() {
   const existing = await chrome.storage.sync.get(["backendUrl"]);
-  if (!existing.backendUrl) {
+  if (!existing.backendUrl || existing.backendUrl === LEGACY_BACKEND_URL) {
     await chrome.storage.sync.set({ backendUrl: DEFAULT_BACKEND_URL });
   }
 }

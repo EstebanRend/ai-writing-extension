@@ -4,7 +4,7 @@
   "description": "Improve selected writing with AI.",
   "version": "0.1.0",
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["<all_urls>", "http://localhost:3000/*"],
+  "host_permissions": ["<all_urls>", "http://localhost:3847/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
