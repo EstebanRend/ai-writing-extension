@@ -1,8 +1,25 @@
 const ROOT_ID = "ai-writing-assistant-root";
 const BUTTON_ID = "ai-writing-assistant-improve";
+const MENU_BUTTON_ID = "ai-writing-assistant-menu";
+const MENU_ID = "ai-writing-assistant-menu-list";
+const DEFAULT_ACTION_ID = "improve-writing";
+const FALLBACK_ACTIONS = [
+  { id: "improve-writing", label: "Improve writing" },
+  { id: "daily-report", label: "Daily report" },
+  { id: "ask-help", label: "Ask help" },
+  { id: "request-review", label: "Request review" }
+];
+
+const TOOLTIP_GAP_PX = 8;
+
+const ICON_WAND = `<svg class="aiw-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="m17.8 11.8 1.2 1.2"/><path d="m17.8 6.2 1.2-1.2"/><path d="M3 21l9-9"/><path d="M12.2 6.2 11 5"/></svg>`;
+const ICON_CHEVRON = `<svg class="aiw-icon aiw-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>`;
 
 let tooltipEl = null;
 let selectedState = null;
+let actionsCache = null;
+let currentActionId = DEFAULT_ACTION_ID;
+let menuOpen = false;
 
 function getExtensionRuntime() {
   if (typeof chrome !== "undefined" && chrome?.runtime?.sendMessage) {
@@ -33,6 +50,41 @@ function sendRuntimeMessage(runtime, payload) {
 function isContextInvalidatedError(error) {
   const message = error instanceof Error ? error.message : String(error || "");
   return message.toLowerCase().includes("extension context invalidated");
+}
+
+async function loadActions() {
+  if (actionsCache) {
+    return actionsCache;
+  }
+
+  const runtime = getExtensionRuntime();
+  if (!runtime) {
+    actionsCache = FALLBACK_ACTIONS;
+    return actionsCache;
+  }
+
+  try {
+    const response = await sendRuntimeMessage(runtime, { type: "GET_ACTIONS" });
+    if (response?.ok && Array.isArray(response.actions) && response.actions.length > 0) {
+      actionsCache = response.actions;
+      if (typeof response.defaultActionId === "string") {
+        currentActionId = response.defaultActionId;
+      }
+      return actionsCache;
+    }
+  } catch (error) {
+    if (!isContextInvalidatedError(error)) {
+      console.warn("[AI Writing] Could not load actions from backend:", error);
+    }
+  }
+
+  actionsCache = FALLBACK_ACTIONS;
+  return actionsCache;
+}
+
+function getActionLabel(actionId) {
+  const action = (actionsCache || FALLBACK_ACTIONS).find((item) => item.id === actionId);
+  return action?.label ?? "Improve writing";
 }
 
 function getInputSelectionDetails() {
@@ -101,10 +153,35 @@ function getSelectionDetails() {
 }
 
 function removeTooltip() {
+  menuOpen = false;
   if (tooltipEl) {
     tooltipEl.remove();
     tooltipEl = null;
   }
+}
+
+function setMenuOpen(open) {
+  menuOpen = open;
+  if (!tooltipEl) {
+    return;
+  }
+  const menuButton = tooltipEl.querySelector(`#${MENU_BUTTON_ID}`);
+  const menu = tooltipEl.querySelector(`#${MENU_ID}`);
+  if (menuButton) {
+    menuButton.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  if (menu) {
+    menu.hidden = !open;
+  }
+}
+
+function renderMainButtonLabel() {
+  const button = tooltipEl?.querySelector(`#${BUTTON_ID}`);
+  if (!button) {
+    return;
+  }
+  const label = getActionLabel(currentActionId);
+  button.innerHTML = `${ICON_WAND}<span>${label}</span>`;
 }
 
 function setLoading(loading) {
@@ -112,11 +189,26 @@ function setLoading(loading) {
     return;
   }
   const button = tooltipEl.querySelector(`#${BUTTON_ID}`);
+  const menuButton = tooltipEl.querySelector(`#${MENU_BUTTON_ID}`);
   if (!button) {
     return;
   }
+
   button.disabled = loading;
-  button.textContent = loading ? "Improving..." : "Improve writing";
+  if (menuButton) {
+    menuButton.disabled = loading;
+  }
+
+  if (loading) {
+    setMenuOpen(false);
+    tooltipEl.classList.add("aiw-loading");
+    button.innerHTML = '<span class="aiw-stop-indicator" aria-hidden="true"></span>';
+    button.setAttribute("aria-label", "Improving");
+  } else {
+    tooltipEl.classList.remove("aiw-loading");
+    renderMainButtonLabel();
+    button.removeAttribute("aria-label");
+  }
 }
 
 function replaceSelectionWithText(newText) {
@@ -152,11 +244,12 @@ function replaceSelectionWithText(newText) {
   return true;
 }
 
-async function runImprove() {
+async function runImprove(actionId = currentActionId) {
   if (!selectedState?.text) {
     return;
   }
 
+  currentActionId = actionId;
   setLoading(true);
   try {
     const runtime = getExtensionRuntime();
@@ -166,7 +259,8 @@ async function runImprove() {
 
     const response = await sendRuntimeMessage(runtime, {
       type: "AI_IMPROVE",
-      selectedText: selectedState.text
+      selectedText: selectedState.text,
+      actionId
     });
     if (!response?.ok) {
       throw new Error(response?.error ?? "AI request failed.");
@@ -188,18 +282,95 @@ async function runImprove() {
   }
 }
 
-function createTooltip(rect) {
+function buildMenuHtml(actions) {
+  return actions
+    .map(
+      (action) =>
+        `<li role="none"><button type="button" class="aiw-menu-item" role="menuitem" data-action-id="${action.id}">${action.label}</button></li>`
+    )
+    .join("");
+}
+
+function bindTooltipEvents(root) {
+  const mainButton = root.querySelector(`#${BUTTON_ID}`);
+  const menuButton = root.querySelector(`#${MENU_BUTTON_ID}`);
+  const menu = root.querySelector(`#${MENU_ID}`);
+
+  const preventSelectionLoss = (event) => {
+    event.preventDefault();
+  };
+
+  mainButton?.addEventListener("mousedown", preventSelectionLoss);
+  menuButton?.addEventListener("mousedown", preventSelectionLoss);
+  menu?.addEventListener("mousedown", preventSelectionLoss);
+
+  mainButton?.addEventListener("click", () => {
+    void runImprove(currentActionId);
+  });
+
+  menuButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setMenuOpen(!menuOpen);
+  });
+
+  menu?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const item = target.closest("[data-action-id]");
+    if (!(item instanceof HTMLElement)) {
+      return;
+    }
+    const actionId = item.dataset.actionId;
+    if (!actionId) {
+      return;
+    }
+    currentActionId = actionId;
+    renderMainButtonLabel();
+    setMenuOpen(false);
+    void runImprove(actionId);
+  });
+}
+
+function positionTooltip(root, rect) {
+  root.style.left = `${window.scrollX + rect.left}px`;
+  root.style.top = `${window.scrollY + rect.top}px`;
+  root.style.transform = `translateY(calc(-100% - ${TOOLTIP_GAP_PX}px))`;
+}
+
+async function createTooltip(rect) {
   removeTooltip();
+
+  const actions = await loadActions();
+  const defaultAction = actions.find((action) => action.id === currentActionId) ?? actions[0];
+  if (defaultAction) {
+    currentActionId = defaultAction.id;
+  }
+  const mainLabel = getActionLabel(currentActionId);
 
   const root = document.createElement("div");
   root.id = ROOT_ID;
-  root.style.top = `${window.scrollY + rect.bottom + 8}px`;
-  root.style.left = `${window.scrollX + rect.left}px`;
-  root.innerHTML = `<button id="${BUTTON_ID}" class="aiw-primary">Improve writing</button>`;
+  positionTooltip(root, rect);
+  root.innerHTML = `
+    <div class="aiw-split">
+      <button type="button" id="${BUTTON_ID}" class="aiw-split-main">
+        ${ICON_WAND}
+        <span>${mainLabel}</span>
+      </button>
+      <div class="aiw-split-divider" aria-hidden="true"></div>
+      <button type="button" id="${MENU_BUTTON_ID}" class="aiw-split-menu" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
+        ${ICON_CHEVRON}
+      </button>
+    </div>
+    <ul id="${MENU_ID}" class="aiw-menu" role="menu" hidden>
+      ${buildMenuHtml(actions)}
+    </ul>
+  `;
 
   document.body.appendChild(root);
   tooltipEl = root;
-  root.querySelector(`#${BUTTON_ID}`)?.addEventListener("click", runImprove);
+  bindTooltipEvents(root);
 }
 
 function refreshTooltip() {
@@ -210,16 +381,41 @@ function refreshTooltip() {
     return;
   }
 
+  const unchanged =
+    tooltipEl &&
+    selectedState?.text === details.text &&
+    selectedState?.mode === details.mode;
+
   selectedState = details;
-  createTooltip(details.rect);
+
+  if (unchanged) {
+    positionTooltip(tooltipEl, details.rect);
+    return;
+  }
+
+  void createTooltip(details.rect);
 }
 
-document.addEventListener("mouseup", () => {
+function shouldRefreshTooltipFromEvent(event) {
+  if (!tooltipEl || !(event.target instanceof Node)) {
+    return true;
+  }
+  return !tooltipEl.contains(event.target);
+}
+
+document.addEventListener("mouseup", (event) => {
+  if (!shouldRefreshTooltipFromEvent(event)) {
+    return;
+  }
   window.setTimeout(refreshTooltip, 0);
 });
 
 document.addEventListener("keyup", (event) => {
   if (event.key === "Escape") {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
     selectedState = null;
     removeTooltip();
     return;

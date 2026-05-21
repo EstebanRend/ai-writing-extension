@@ -20,6 +20,29 @@ chrome.runtime.onInstalled.addListener(ensureDefaults);
 chrome.runtime.onStartup.addListener(ensureDefaults);
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "GET_ACTIONS") {
+    (async () => {
+      let settings = { backendUrl: DEFAULT_BACKEND_URL };
+      try {
+        settings = await getSettings();
+        const response = await fetch(`${settings.backendUrl}/api/actions`);
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to load actions.");
+        }
+        sendResponse({ ok: true, ...payload });
+      } catch (error) {
+        const errMessage = error instanceof Error ? error.message : "Unknown error";
+        const normalizedMessage =
+          errMessage.toLowerCase().includes("failed to fetch")
+            ? `Cannot reach backend at ${settings.backendUrl || DEFAULT_BACKEND_URL}. Make sure server is running.`
+            : errMessage;
+        sendResponse({ ok: false, error: normalizedMessage });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type !== "AI_IMPROVE") {
     return false;
   }
