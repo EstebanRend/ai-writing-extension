@@ -246,12 +246,22 @@ function bindMenuEvents(menu) {
   });
 }
 
-/** Places the root at the selection end, shifted upward by the bar height + gap. */
+/**
+ * Positions the bar (not the dropdown) relative to the selection focus.
+ * Forward → bar below focus; backward → bar above focus. Overflow menu always
+ * opens upward from the bar via CSS and does not affect this placement.
+ */
 function positionTooltip(root, details) {
-  const anchor = getSelectionAnchorRect(details);
-  root.style.left = `${window.scrollX + anchor.left}px`;
-  root.style.top = `${window.scrollY + anchor.bottom}px`;
-  root.style.transform = `translateY(calc(-100% - ${AIW_CONFIG.tooltipGapPx}px))`;
+  const focus = getSelectionFocusPoint(details);
+  const gap = AIW_CONFIG.tooltipGapPx;
+  const backward = details.direction === "backward";
+
+  root.style.setProperty("--aiw-menu-gap", `${AIW_CONFIG.menuGapPx}px`);
+  root.style.left = `${window.scrollX + focus.centerX}px`;
+  root.style.top = `${window.scrollY + (backward ? focus.top : focus.bottom)}px`;
+  root.style.transform = backward
+    ? `translate(-50%, calc(-100% - ${gap}px))`
+    : `translate(-50%, ${gap}px)`;
 }
 
 function bindTooltipEvents(root) {

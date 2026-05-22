@@ -4,7 +4,10 @@
  */
 const AIW_CONFIG = Object.freeze({
   defaultActionId: "improve-writing",
-  tooltipGapPx: 8,
+  /** Vertical space between the selection focus (mouse endpoint) and the bar edge. */
+  tooltipGapPx: 20,
+  /** Vertical space between the bar and the overflow dropdown (always opens upward). */
+  menuGapPx: 6,
   dom: Object.freeze({
     root: "ai-writing-assistant-root",
     mainButton: "ai-writing-assistant-improve",

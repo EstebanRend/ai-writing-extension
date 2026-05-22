@@ -2,14 +2,13 @@
   Tooltip shell (loaded by tooltip.js via chrome.runtime.getURL).
 
   Document coordinates (set in JS on #ai-writing-assistant-root):
-    left  = scrollX + selection end X
-    top   = scrollY + selection end Y
-    transform = translateY(-100% - gap)  → sits above the selection end
+    left  = scrollX + focus center X
+    top   = scrollY + focus top (backward) or bottom (forward)
+    transform = translate(-50%, …)  → tooltip centered on focus; above or below by drag direction
 
   In-page layout (this file + styles.css):
-    .aiw-tooltip__chrome  — column, align end (menu anchors to bar’s right)
-    .aiw-menu             — above .aiw-bar (bottom: 100%)
-    .aiw-bar               — primary action + overflow menu trigger
+    .aiw-bar   — positioned by JS (above/below focus by drag direction)
+    .aiw-menu — always above .aiw-bar (absolute); unaffected by drag direction
 
   Dynamic: menu <li> items are injected into [data-aiw="menu"] from the action tree.
 -->

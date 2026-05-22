@@ -12,10 +12,8 @@
 /* ── In-page chrome (edit layout in tooltip-shell.html) ─────────────────── */
 
 #ai-writing-assistant-root .aiw-tooltip__chrome {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  position: relative;
+  display: inline-block;
 }
 
 #ai-writing-assistant-root .aiw-bar {
@@ -58,7 +56,6 @@
 
 #ai-writing-assistant-root .aiw-bar__label {
   white-space: nowrap;
-  overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -95,13 +92,14 @@
   transition: transform 0.15s ease;
 }
 
-/* Menu opens above the bar, right-aligned to the bar (no fixed margin hack). */
+/* Dropdown always opens above the bar; out of flow so bar position stays fixed. */
 
 #ai-writing-assistant-root .aiw-menu {
-  position: relative;
-  order: -1;
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin: 0 0 var(--aiw-menu-gap, 6px);
   min-width: 180px;
-  margin: 0;
   padding: 4px 0;
   list-style: none;
   background: #fff;
