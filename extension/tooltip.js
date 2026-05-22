@@ -1,8 +1,13 @@
 const tooltipState = {
   el: null,
   menuOpen: false,
-  openSubmenuRow: null
+  openSubmenuRow: null,
+  shellHtml: null,
+  shellLoad: null,
+  mainButtonInnerHtml: null
 };
+
+const SUBMENU_CHEVRON = `<svg class="aiw-icon aiw-icon--chevron-right" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>`;
 
 function getTooltipElement() {
   return tooltipState.el;
@@ -10,6 +15,27 @@ function getTooltipElement() {
 
 function queryTooltip(selector) {
   return tooltipState.el?.querySelector(selector) ?? null;
+}
+
+function loadTooltipShell() {
+  if (tooltipState.shellHtml) {
+    return Promise.resolve(tooltipState.shellHtml);
+  }
+  if (!tooltipState.shellLoad) {
+    const url = chrome.runtime.getURL("tooltip-shell.html");
+    tooltipState.shellLoad = fetch(url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load tooltip shell (${response.status})`);
+        }
+        return response.text();
+      })
+      .then((html) => {
+        tooltipState.shellHtml = html.trim();
+        return tooltipState.shellHtml;
+      });
+  }
+  return tooltipState.shellLoad;
 }
 
 function removeTooltip() {
@@ -23,7 +49,7 @@ function removeTooltip() {
 
 function closeSubmenu() {
   if (tooltipState.openSubmenuRow) {
-    tooltipState.openSubmenuRow.classList.remove("aiw-menu-row--open");
+    tooltipState.openSubmenuRow.classList.remove("aiw-menu__row--open");
     const submenu = tooltipState.openSubmenuRow.querySelector(".aiw-submenu");
     if (submenu) {
       submenu.hidden = true;
@@ -55,11 +81,11 @@ function isMenuOpen() {
 
 function renderMainButtonLabel() {
   const button = queryTooltip(`#${AIW_CONFIG.dom.mainButton}`);
-  if (!button) {
+  const labelEl = queryTooltip("[data-aiw='main-label']");
+  if (!button || !labelEl) {
     return;
   }
-  const label = getActionLabel(getCurrentActionId());
-  button.innerHTML = `${AIW_CONFIG.icons.wand}<span>${label}</span>`;
+  labelEl.textContent = getActionLabel(getCurrentActionId());
 }
 
 function setLoading(loading) {
@@ -86,13 +112,16 @@ function setLoading(loading) {
   }
 
   tooltipState.el.classList.remove("aiw-loading");
-  renderMainButtonLabel();
+  if (tooltipState.mainButtonInnerHtml) {
+    button.innerHTML = tooltipState.mainButtonInnerHtml;
+    renderMainButtonLabel();
+  }
   button.removeAttribute("aria-label");
 }
 
 function buildLeafItemHtml(leaf) {
-  return `<li role="none" class="aiw-menu-row">
-    <button type="button" class="aiw-menu-item" role="menuitem" data-action-id="${leaf.id}">${leaf.label}</button>
+  return `<li role="none" class="aiw-menu__row">
+    <button type="button" class="aiw-menu__item" role="menuitem" data-action-id="${leaf.id}">${leaf.label}</button>
   </li>`;
 }
 
@@ -109,10 +138,10 @@ function buildMenuNodesHtml(nodes) {
       if (!Array.isArray(node.children) || node.children.length === 0) {
         return "";
       }
-      return `<li role="none" class="aiw-menu-row aiw-menu-row--parent" data-group-id="${node.id}">
-        <button type="button" class="aiw-menu-item aiw-menu-item--parent" role="menuitem" aria-haspopup="true" aria-expanded="false">
-          <span class="aiw-menu-item-label">${node.label}</span>
-          ${AIW_CONFIG.icons.chevronRight}
+      return `<li role="none" class="aiw-menu__row aiw-menu__row--parent" data-group-id="${node.id}">
+        <button type="button" class="aiw-menu__item aiw-menu__item--parent" role="menuitem" aria-haspopup="true" aria-expanded="false">
+          <span class="aiw-menu__item-label">${node.label}</span>
+          ${SUBMENU_CHEVRON}
         </button>
         <ul class="aiw-submenu" role="menu" hidden>
           ${buildSubmenuHtml(node.children)}
@@ -122,23 +151,11 @@ function buildMenuNodesHtml(nodes) {
     .join("");
 }
 
-function buildTooltipHtml(mainLabel) {
-  const { mainButton, menuButton, menu } = AIW_CONFIG.dom;
-  return `
-    <ul id="${menu}" class="aiw-menu" role="menu" hidden>
-      ${buildMenuNodesHtml(aiwGetActionTree())}
-    </ul>
-    <div class="aiw-split">
-      <button type="button" id="${mainButton}" class="aiw-split-main">
-        ${AIW_CONFIG.icons.wand}
-        <span>${mainLabel}</span>
-      </button>
-      <div class="aiw-split-divider" aria-hidden="true"></div>
-      <button type="button" id="${menuButton}" class="aiw-split-menu" aria-haspopup="true" aria-expanded="false" aria-label="More actions">
-        ${AIW_CONFIG.icons.chevron}
-      </button>
-    </div>
-  `;
+function renderMenu(menu) {
+  if (!menu) {
+    return;
+  }
+  menu.innerHTML = buildMenuNodesHtml(aiwGetActionTree());
 }
 
 function positionSubmenu(row) {
@@ -159,11 +176,11 @@ function openSubmenu(row) {
   }
   closeSubmenu();
   const submenu = row.querySelector(".aiw-submenu");
-  const trigger = row.querySelector(".aiw-menu-item--parent");
+  const trigger = row.querySelector(".aiw-menu__item--parent");
   if (!submenu || !trigger) {
     return;
   }
-  row.classList.add("aiw-menu-row--open");
+  row.classList.add("aiw-menu__row--open");
   submenu.hidden = false;
   trigger.setAttribute("aria-expanded", "true");
   tooltipState.openSubmenuRow = row;
@@ -191,10 +208,10 @@ function bindMenuEvents(menu) {
       return;
     }
 
-    const parentTrigger = target.closest(".aiw-menu-item--parent");
+    const parentTrigger = target.closest(".aiw-menu__item--parent");
     if (parentTrigger) {
       event.stopPropagation();
-      const row = parentTrigger.closest(".aiw-menu-row--parent");
+      const row = parentTrigger.closest(".aiw-menu__row--parent");
       if (row instanceof HTMLElement) {
         if (tooltipState.openSubmenuRow === row) {
           closeSubmenu();
@@ -212,7 +229,7 @@ function bindMenuEvents(menu) {
     handleMenuActionClick(item.dataset.actionId);
   });
 
-  for (const row of menu.querySelectorAll(".aiw-menu-row--parent")) {
+  for (const row of menu.querySelectorAll(".aiw-menu__row--parent")) {
     row.addEventListener("mouseenter", () => {
       if (row instanceof HTMLElement) {
         openSubmenu(row);
@@ -229,6 +246,7 @@ function bindMenuEvents(menu) {
   });
 }
 
+/** Places the root at the selection end, shifted upward by the bar height + gap. */
 function positionTooltip(root, details) {
   const anchor = getSelectionAnchorRect(details);
   root.style.left = `${window.scrollX + anchor.left}px`;
@@ -265,7 +283,25 @@ function bindTooltipEvents(root) {
   bindMenuEvents(menu);
 }
 
-function createTooltip(details) {
+async function mountTooltipShell(root, mainLabel) {
+  const shellHtml = await loadTooltipShell();
+  root.innerHTML = shellHtml;
+
+  const mainButton = root.querySelector("[data-aiw='main-button']");
+  if (mainButton) {
+    tooltipState.mainButtonInnerHtml = mainButton.innerHTML;
+  }
+
+  const labelEl = root.querySelector("[data-aiw='main-label']");
+  if (labelEl) {
+    labelEl.textContent = mainLabel;
+  }
+
+  const menu = root.querySelector(`#${AIW_CONFIG.dom.menu}`);
+  renderMenu(menu);
+}
+
+async function createTooltip(details) {
   removeTooltip();
   loadActions();
 
@@ -277,7 +313,13 @@ function createTooltip(details) {
   const root = document.createElement("div");
   root.id = AIW_CONFIG.dom.root;
   positionTooltip(root, details);
-  root.innerHTML = buildTooltipHtml(getActionLabel(getCurrentActionId()));
+
+  try {
+    await mountTooltipShell(root, getActionLabel(getCurrentActionId()));
+  } catch (error) {
+    console.error("[AI Writing Assistant] tooltip shell failed to load", error);
+    return;
+  }
 
   document.body.appendChild(root);
   tooltipState.el = root;
@@ -307,7 +349,7 @@ function refreshTooltip() {
     return;
   }
 
-  createTooltip(details);
+  void createTooltip(details);
 }
 
 function shouldRefreshTooltipFromEvent(event) {
@@ -334,3 +376,5 @@ function handleEscapeKey() {
   removeTooltip();
   return true;
 }
+
+void loadTooltipShell();
