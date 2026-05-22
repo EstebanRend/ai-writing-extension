@@ -8,19 +8,11 @@
 
   In-page layout (this file + styles.css):
     .aiw-bar   — positioned by JS (above/below focus by drag direction)
-    .aiw-menu — always above .aiw-bar (absolute); unaffected by drag direction
+    .aiw-menu — above .aiw-bar__trigger; left edge aligned with the chevron button
 
   Dynamic: menu <li> items are injected into [data-aiw="menu"] from the action tree.
 -->
 <div class="aiw-tooltip__chrome">
-  <ul
-    id="ai-writing-assistant-menu-list"
-    class="aiw-menu"
-    role="menu"
-    hidden
-    data-aiw="menu"
-  ></ul>
-
   <div class="aiw-bar" data-aiw="bar">
     <button
       type="button"
@@ -37,18 +29,28 @@
 
     <span class="aiw-bar__divider" aria-hidden="true"></span>
 
-    <button
-      type="button"
-      id="ai-writing-assistant-menu"
-      class="aiw-bar__trigger"
-      data-aiw="menu-button"
-      aria-haspopup="true"
-      aria-expanded="false"
-      aria-label="More actions"
-    >
-      <svg class="aiw-icon aiw-icon--chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="m6 15 6-6 6 6"/>
-      </svg>
-    </button>
+    <div class="aiw-bar__overflow" data-aiw="overflow">
+      <ul
+        id="ai-writing-assistant-menu-list"
+        class="aiw-menu"
+        role="menu"
+        hidden
+        data-aiw="menu"
+      ></ul>
+
+      <button
+        type="button"
+        id="ai-writing-assistant-menu"
+        class="aiw-bar__trigger"
+        data-aiw="menu-button"
+        aria-haspopup="true"
+        aria-expanded="false"
+        aria-label="More actions"
+      >
+        <svg class="aiw-icon aiw-icon--chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 15 6-6 6 6"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </div>

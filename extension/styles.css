@@ -66,13 +66,22 @@
   flex-shrink: 0;
 }
 
+#ai-writing-assistant-root .aiw-bar__overflow {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 28px;
+}
+
 #ai-writing-assistant-root .aiw-bar__trigger {
-  display: inline-flex;
+  display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: 100%;
+  min-height: 100%;
   border-radius: 4px;
-  flex-shrink: 0;
 }
 
 #ai-writing-assistant-root .aiw-bar__trigger[aria-expanded="true"] {
@@ -92,11 +101,12 @@
   transition: transform 0.15s ease;
 }
 
-/* Dropdown always opens above the bar; out of flow so bar position stays fixed. */
+/* Dropdown opens above the chevron; left edge aligned with the trigger button. */
 
 #ai-writing-assistant-root .aiw-menu {
   position: absolute;
-  right: 0;
+  left: 0;
+  right: auto;
   bottom: 100%;
   margin: 0 0 var(--aiw-menu-gap, 6px);
   min-width: 180px;
@@ -172,11 +182,18 @@
 /* ── Loading / stop ──────────────────────────────────────────────────────── */
 
 #ai-writing-assistant-root.aiw-loading .aiw-bar {
-  border-radius: 999px;
-  padding: 3px;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #ai-writing-assistant-root.aiw-loading .aiw-bar__divider,
+#ai-writing-assistant-root.aiw-loading .aiw-bar__overflow,
 #ai-writing-assistant-root.aiw-loading .aiw-bar__trigger,
 #ai-writing-assistant-root.aiw-loading .aiw-menu {
   display: none;
@@ -184,9 +201,10 @@
 
 #ai-writing-assistant-root.aiw-loading .aiw-bar__primary {
   min-width: 0;
-  width: 28px;
-  height: 28px;
+  width: 100%;
+  height: 100%;
   padding: 0;
+  border-radius: 50%;
   justify-content: center;
 }
 
