@@ -1,0 +1,26 @@
+<!--
+  Reference templates for menu rows (built in JS from the action tree).
+  Copy/paste patterns when editing buildMenuNodesHtml() in tooltip.js.
+
+  Leaf row:
+-->
+<template data-aiw-template="menu-leaf">
+  <li role="none" class="aiw-menu__row">
+    <button type="button" class="aiw-menu__item" role="menuitem" data-action-id="ACTION_ID">Label</button>
+  </li>
+</template>
+
+<!--
+  Parent row + submenu:
+-->
+<template data-aiw-template="menu-parent">
+  <li role="none" class="aiw-menu__row aiw-menu__row--parent" data-group-id="GROUP_ID">
+    <button type="button" class="aiw-menu__item aiw-menu__item--parent" role="menuitem" aria-haspopup="true" aria-expanded="false">
+      <span class="aiw-menu__item-label">Group label</span>
+      <svg class="aiw-icon aiw-icon--chevron-right" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="m9 6 6 6-6 6"/>
+      </svg>
+    </button>
+    <ul class="aiw-submenu" role="menu" hidden></ul>
+  </li>
+</template>

@@ -28,5 +28,11 @@
   ],
   "action": {
     "default_title": "AI Writing Assistant"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["tooltip-shell.html", "tooltip-menu-templates.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

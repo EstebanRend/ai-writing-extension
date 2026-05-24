@@ -1,0 +1,56 @@
+<!--
+  Tooltip shell (loaded by tooltip.js via chrome.runtime.getURL).
+
+  Document coordinates (set in JS on #ai-writing-assistant-root):
+    left  = scrollX + focus center X
+    top   = scrollY + focus top (backward) or bottom (forward)
+    transform = translate(-50%, …)  → tooltip centered on focus; above or below by drag direction
+
+  In-page layout (this file + styles.css):
+    .aiw-bar   — positioned by JS (above/below focus by drag direction)
+    .aiw-menu — above .aiw-bar__trigger; left edge aligned with the chevron button
+
+  Dynamic: menu <li> items are injected into [data-aiw="menu"] from the action tree.
+-->
+<div class="aiw-tooltip__chrome">
+  <div class="aiw-bar" data-aiw="bar">
+    <button
+      type="button"
+      id="ai-writing-assistant-improve"
+      class="aiw-bar__primary"
+      data-aiw="main-button"
+    >
+      <svg class="aiw-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/>
+        <path d="m17.8 11.8 1.2 1.2"/><path d="m17.8 6.2 1.2-1.2"/><path d="M3 21l9-9"/><path d="M12.2 6.2 11 5"/>
+      </svg>
+      <span class="aiw-bar__label" data-aiw="main-label">Improve</span>
+    </button>
+
+    <span class="aiw-bar__divider" aria-hidden="true"></span>
+
+    <div class="aiw-bar__overflow" data-aiw="overflow">
+      <ul
+        id="ai-writing-assistant-menu-list"
+        class="aiw-menu"
+        role="menu"
+        hidden
+        data-aiw="menu"
+      ></ul>
+
+      <button
+        type="button"
+        id="ai-writing-assistant-menu"
+        class="aiw-bar__trigger"
+        data-aiw="menu-button"
+        aria-haspopup="true"
+        aria-expanded="false"
+        aria-label="More actions"
+      >
+        <svg class="aiw-icon aiw-icon--chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m6 15 6-6 6 6"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>

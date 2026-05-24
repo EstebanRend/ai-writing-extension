@@ -123,13 +123,16 @@ function getInputSelectionDetails() {
     return null;
   }
 
+  const direction = activeEl.selectionDirection === "backward" ? "backward" : "forward";
+
   return {
     text,
     rect: activeEl.getBoundingClientRect(),
     mode: "input",
     element: activeEl,
     start,
-    end
+    end,
+    direction
   };
 }
 
@@ -151,15 +154,52 @@ function getRangeSelectionDetails() {
     text,
     rect,
     mode: "range",
-    range: range.cloneRange()
+    range: range.cloneRange(),
+    direction: getRangeSelectionDirection(selection)
   };
+}
+
+/** "forward" = left-to-right drag; "backward" = right-to-left. Focus is always the drag endpoint. */
+function getRangeSelectionDirection(selection) {
+  const anchorNode = selection.anchorNode;
+  const focusNode = selection.focusNode;
+  if (!anchorNode || !focusNode) {
+    return "forward";
+  }
+
+  const anchorOffset = selection.anchorOffset;
+  const focusOffset = selection.focusOffset;
+
+  if (anchorNode === focusNode) {
+    return anchorOffset <= focusOffset ? "forward" : "backward";
+  }
+
+  const position = anchorNode.compareDocumentPosition(focusNode);
+  if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+    return "forward";
+  }
+  if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+    return "backward";
+  }
+
+  return "forward";
 }
 
 function getSelectionDetails() {
   return getInputSelectionDetails() || getRangeSelectionDetails();
 }
 
-function getInputEndAnchorRect(element, end) {
+function caretRectToFocusPoint(rect) {
+  const centerX = rect.width > 0 ? rect.left + rect.width / 2 : rect.left;
+  return {
+    left: rect.left,
+    top: rect.top,
+    bottom: rect.bottom,
+    centerX
+  };
+}
+
+function getInputCaretRect(element, offset) {
   const div = document.createElement("div");
   const style = div.style;
   const computed = window.getComputedStyle(element);
@@ -175,42 +215,52 @@ function getInputEndAnchorRect(element, end) {
   style.width = `${element.offsetWidth}px`;
 
   const value = element.value;
-  div.textContent = value.slice(0, end);
+  div.textContent = value.slice(0, offset);
   const marker = document.createElement("span");
-  marker.textContent = value.slice(end) || ".";
+  marker.textContent = value.slice(offset) || ".";
   div.appendChild(marker);
   document.body.appendChild(div);
 
   const markerRect = marker.getBoundingClientRect();
   document.body.removeChild(div);
-  return { left: markerRect.left, bottom: markerRect.bottom };
+  return caretRectToFocusPoint(markerRect);
 }
 
-function getRangeEndAnchorRect(range) {
-  const endRange = range.cloneRange();
-  endRange.collapse(false);
-  const endRect = getRangeBoundingRect(endRange);
+function getRangeFocusAnchorRect(range, backward) {
+  const focusRange = range.cloneRange();
+  focusRange.collapse(backward);
+  const focusRect = getRangeBoundingRect(focusRange);
   const rects = range.getClientRects();
 
-  if (rects.length > 0 && (endRect.width === 0 || endRect.height === 0)) {
-    const last = rects[rects.length - 1];
-    return { left: last.right, bottom: last.bottom };
+  if (rects.length > 0 && (focusRect.width === 0 || focusRect.height === 0)) {
+    const lineRect = backward ? rects[0] : rects[rects.length - 1];
+    const x = backward ? lineRect.left : lineRect.right;
+    return caretRectToFocusPoint(
+      new DOMRect(x, lineRect.top, 0, Math.max(0, lineRect.bottom - lineRect.top))
+    );
   }
 
-  return {
-    left: endRect.width === 0 ? endRect.left : endRect.right,
-    bottom: endRect.bottom
-  };
+  const x = focusRect.width === 0 ? focusRect.left : backward ? focusRect.left : focusRect.right;
+  return caretRectToFocusPoint(
+    new DOMRect(x, focusRect.top, 0, Math.max(0, focusRect.bottom - focusRect.top))
+  );
 }
 
-function getSelectionAnchorRect(details) {
+/** Viewport coordinates for the selection focus (where the user released), plus centerX. */
+function getSelectionFocusPoint(details) {
+  const backward = details.direction === "backward";
+
   if (details.mode === "input" && details.element) {
-    return getInputEndAnchorRect(details.element, details.end);
+    const focusOffset = backward ? details.start : details.end;
+    return getInputCaretRect(details.element, focusOffset);
   }
   if (details.mode === "range" && details.range) {
-    return getRangeEndAnchorRect(details.range);
+    return getRangeFocusAnchorRect(details.range, backward);
   }
-  return { left: details.rect.left, bottom: details.rect.bottom };
+
+  const rect = details.rect;
+  const centerX = rect.left + rect.width / 2;
+  return { left: rect.left, top: rect.top, bottom: rect.bottom, centerX };
 }
 
 function replaceSelectionWithText(newText) {
