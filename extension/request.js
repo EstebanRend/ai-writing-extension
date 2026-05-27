@@ -82,7 +82,17 @@ async function runImprove(actionId = requestState.currentActionId) {
 
     const result = response.result || "";
     if (result) {
-      replaceSelectionWithText(result);
+      let replaced = false;
+      try {
+        replaced = replaceSelectionWithText(result);
+      } catch (replaceError) {
+        console.warn("[AI Writing] Replace failed in this editor:", replaceError);
+      }
+      if (!replaced) {
+        console.warn(
+          "[AI Writing] Could not replace selection in this editor (common on Microsoft Teams). Refocus the chat box and try again."
+        );
+      }
     }
     removeTooltip();
   } catch (error) {

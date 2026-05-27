@@ -31,6 +31,9 @@ function clearSelectedState() {
   selectedState = null;
 }
 
+const EDITABLE_SELECTOR =
+  ".ck-editor__editable, .ck-content[contenteditable], [contenteditable=''], [contenteditable='true'], [role='textbox'][contenteditable]";
+
 function getEditableRoot(node) {
   if (!node) {
     return null;
@@ -39,7 +42,29 @@ function getEditableRoot(node) {
   if (!(element instanceof HTMLElement)) {
     return null;
   }
-  return element.closest("[contenteditable=''], [contenteditable='true']");
+  return element.closest(EDITABLE_SELECTOR);
+}
+
+/** Teams uses CKEditor; only the root editable exposes `ckeditorInstance`. */
+function getCKEditorRootEditable(node) {
+  const start = getEditableRoot(node);
+  if (!(start instanceof HTMLElement)) {
+    return null;
+  }
+
+  let current = start;
+  let withInstance = null;
+  while (current instanceof HTMLElement) {
+    if (current.ckeditorInstance) {
+      withInstance = current;
+    }
+    const parent = current.parentElement?.closest(EDITABLE_SELECTOR);
+    if (!parent || parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return withInstance || start;
 }
 
 function getRangeBoundingRect(range) {
@@ -147,14 +172,18 @@ function getRangeSelectionDetails() {
     return null;
   }
 
-  const text = selection.toString().trim();
+  const rawText = selection.toString();
+  const text = rawText.trim();
   const rect = getRangeBoundingRect(range);
+  const editable = getCKEditorRootEditable(range.commonAncestorContainer);
 
   return {
     text,
+    rawText,
     rect,
     mode: "range",
     range: range.cloneRange(),
+    editable,
     direction: getRangeSelectionDirection(selection)
   };
 }
@@ -263,6 +292,227 @@ function getSelectionFocusPoint(details) {
   return { left: rect.left, top: rect.top, bottom: rect.bottom, centerX };
 }
 
+function isRangeConnected(range) {
+  try {
+    const container = range.commonAncestorContainer;
+    const element =
+      container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+    return Boolean(element?.isConnected);
+  } catch {
+    return false;
+  }
+}
+
+function restoreDocumentSelection(range) {
+  const selection = window.getSelection();
+  if (!selection) {
+    return false;
+  }
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function dispatchEditableInput(editable, inputType) {
+  editable.dispatchEvent(
+    new InputEvent("input", { bubbles: true, cancelable: false, inputType })
+  );
+}
+
+function findRangeForText(root, searchText) {
+  if (!searchText || !(root instanceof HTMLElement)) {
+    return null;
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const segments = [];
+  let combined = "";
+  let textNode = walker.nextNode();
+  while (textNode) {
+    const value = textNode.textContent || "";
+    segments.push({ node: textNode, start: combined.length, length: value.length });
+    combined += value;
+    textNode = walker.nextNode();
+  }
+
+  const candidates = [searchText, searchText.trim()].filter(
+    (value, index, list) => value && list.indexOf(value) === index
+  );
+  let startIndex = -1;
+  let matchLength = 0;
+  for (const candidate of candidates) {
+    const index = combined.indexOf(candidate);
+    if (index !== -1) {
+      startIndex = index;
+      matchLength = candidate.length;
+      break;
+    }
+  }
+  if (startIndex === -1) {
+    return null;
+  }
+
+  function positionAt(globalOffset) {
+    for (const segment of segments) {
+      const segmentEnd = segment.start + segment.length;
+      if (globalOffset <= segmentEnd) {
+        return { node: segment.node, offset: Math.max(0, globalOffset - segment.start) };
+      }
+    }
+    const last = segments[segments.length - 1];
+    return last ? { node: last.node, offset: last.length } : null;
+  }
+
+  const start = positionAt(startIndex);
+  const end = positionAt(startIndex + matchLength);
+  if (!start || !end) {
+    return null;
+  }
+
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  return range;
+}
+
+function editorShowsText(editable, text) {
+  if (!editable || !text) {
+    return false;
+  }
+  const sample = text.slice(0, Math.min(80, text.length));
+  const content = editable.innerText || editable.textContent || "";
+  return content.includes(sample);
+}
+
+function syncCKEditorSelectionFromDom(editor) {
+  const domSelection = document.getSelection();
+  if (!domSelection || domSelection.rangeCount === 0) {
+    return;
+  }
+
+  try {
+    const viewRange = editor.editing.view.domConverter.domRangeToView(domSelection.getRangeAt(0));
+    if (viewRange) {
+      editor.editing.view.document.selection.setTo(viewRange);
+    }
+  } catch {
+    // Converter API differs across CKEditor builds; focus + DOM selection may still be enough.
+  }
+}
+
+function replaceViaCKEditor(editable, newText) {
+  const editor = editable.ckeditorInstance;
+  if (!editor) {
+    return false;
+  }
+
+  try {
+    editor.editing.view.focus();
+    syncCKEditorSelectionFromDom(editor);
+    editor.execute("insertText", { text: newText });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function replaceViaPaste(editable, newText) {
+  try {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", newText);
+    const paste = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer
+    });
+    editable.dispatchEvent(paste);
+    return editorShowsText(editable, newText);
+  } catch {
+    return false;
+  }
+}
+
+function replaceViaBeforeInput(editable, newText) {
+  const beforeInput = new InputEvent("beforeinput", {
+    bubbles: true,
+    cancelable: true,
+    inputType: "insertReplacementText",
+    data: newText
+  });
+  editable.dispatchEvent(beforeInput);
+  if (beforeInput.defaultPrevented) {
+    dispatchEditableInput(editable, "insertReplacementText");
+    return editorShowsText(editable, newText);
+  }
+  return false;
+}
+
+function replaceViaExecCommand(newText) {
+  try {
+    return document.execCommand("insertText", false, newText);
+  } catch {
+    return false;
+  }
+}
+
+function replaceViaDom(range, editable, newText) {
+  try {
+    range.deleteContents();
+    range.insertNode(document.createTextNode(newText));
+    if (editable) {
+      dispatchEditableInput(editable, "insertText");
+    }
+    return !editable || editorShowsText(editable, newText);
+  } catch {
+    return false;
+  }
+}
+
+/** Rich editors (e.g. Teams / CKEditor) need editor APIs; DOM-only edits are reverted. */
+function replaceRangeSelectionWithText(savedRange, editableHint, newText, originalText) {
+  let editable = editableHint?.isConnected ? editableHint : null;
+  if (!editable) {
+    const anchor =
+      savedRange.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? savedRange.commonAncestorContainer
+        : savedRange.commonAncestorContainer.parentElement;
+    editable = getCKEditorRootEditable(anchor);
+  }
+  if (!editable) {
+    return false;
+  }
+
+  let targetRange = isRangeConnected(savedRange) ? savedRange.cloneRange() : null;
+  if (!targetRange && originalText) {
+    targetRange = findRangeForText(editable, originalText);
+  }
+  if (!targetRange) {
+    return false;
+  }
+
+  editable.focus();
+  if (!restoreDocumentSelection(targetRange)) {
+    return false;
+  }
+
+  if (editable.ckeditorInstance && replaceViaCKEditor(editable, newText)) {
+    return true;
+  }
+  if (replaceViaPaste(editable, newText)) {
+    return true;
+  }
+  if (replaceViaBeforeInput(editable, newText)) {
+    return true;
+  }
+  if (replaceViaExecCommand(newText)) {
+    dispatchEditableInput(editable, "insertText");
+    if (editorShowsText(editable, newText)) {
+      return true;
+    }
+  }
+  return replaceViaDom(targetRange, editable, newText);
+}
+
 function replaceSelectionWithText(newText) {
   const state = getSelectedState();
   if (!state) {
@@ -274,12 +524,16 @@ function replaceSelectionWithText(newText) {
     if (!element?.isConnected) {
       return false;
     }
-    element.focus();
-    element.setSelectionRange(start, end);
-    element.setRangeText(newText, start, end, "end");
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
+    try {
+      element.focus();
+      element.setSelectionRange(start, end);
+      element.setRangeText(newText, start, end, "end");
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   const range = state.range;
@@ -287,18 +541,10 @@ function replaceSelectionWithText(newText) {
     return false;
   }
 
-  const targetRange = range.cloneRange();
-  if (!targetRange.commonAncestorContainer?.isConnected) {
-    return false;
-  }
-
-  targetRange.deleteContents();
-  targetRange.insertNode(document.createTextNode(newText));
-
-  const editable = getEditableRoot(targetRange.commonAncestorContainer);
-  if (editable) {
-    editable.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
-  }
-
-  return true;
+  return replaceRangeSelectionWithText(
+    range,
+    state.editable,
+    newText,
+    state.rawText || state.text
+  );
 }
