@@ -6,6 +6,7 @@ Designed for everyday software communication (Slack messages, status updates, he
 
 ## Project Structure
 
+
 - `extension/` - Chrome extension (Manifest V3)
   - `config.js` - shared IDs, message types, icons
   - `actions.js` - action tree, prompts, and menu helpers
